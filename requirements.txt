@@ -1,0 +1,19 @@
+# For Data Transformation
+pandas
+
+# For PostgreSQL Database
+sqlalchemy
+psycopg2-binary
+
+# For Loading Secrets
+python-dotenv
+
+# For Live Data Ingestion
+websocket-client
+
+# For the Kafka "Conveyor Belt"
+kafka-python
+
+# For Testing
+pytest
+pytest-mock

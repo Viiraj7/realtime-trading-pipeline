@@ -1,0 +1,70 @@
+version: '3.8'
+
+# This is where we define all our 'services'
+services:
+
+  # 1. Zookeeper: Kafka's 'manager'
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  # 2. Kafka: Our 'conveyor belt'
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka
+    depends_on:
+      - zookeeper # Won't start until zookeeper is running
+    ports:
+      - "9092:9092" # Port for your PC to talk to Kafka
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+  # 3. Postgres: Our 'warehouse' database
+  postgres:
+    image: timescale/timescaledb:latest-pg14
+    container_name: postgres
+    environment:
+      POSTGRES_USER: ${DB_USER}       # Reads 'postgres' from your .env file
+      POSTGRES_PASSWORD: ${DB_PASSWORD} # Reads 'mysecretpassword' from .env
+      POSTGRES_DB: ${DB_NAME}         # Reads 'market_data' from .env
+    ports:
+      - "5432:5432" # Lets you connect to the DB from your PC
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/create_tables.sql:/docker-entrypoint-initdb.d/init.sql # Runs our SQL file on startup
+
+  # 4. Python Producer: Our 'loading dock' worker
+  producer:
+    build: .  # Tells it to build from the Dockerfile in this folder
+    container_name: producer
+    command: python src/ingest/producer.py # The command to run
+    restart: on-failure
+    env_file: .env # Gives this container all our secrets
+    depends_on:
+      - kafka # Won't start until Kafka is ready
+
+  # 5. Python Consumer: Our 'assembly line' worker
+  etl_worker:
+    build: . # Uses the *same* Docker image we build
+    container_name: etl_worker
+    command: python src/processing/etl_worker.py
+    restart: on-failure
+    env_file: .env # Also needs secrets to connect to the DB/Kafka
+    depends_on:
+      - kafka
+      - postgres # Won't start until Kafka AND Postgres are ready
+
+# This tells Docker to save our database data
+volumes:
+  postgres_data:

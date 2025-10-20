@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.pytest_cache/
+
+# Secrets
+# THIS IS THE MOST IMPORTANT LINE:
+.env
+
+# OS
+.DS_Store
