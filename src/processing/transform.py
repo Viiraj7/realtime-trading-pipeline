@@ -14,8 +14,8 @@ def aggregate_trades_to_ohlc(trades: list) -> pd.DataFrame:
                        'v' (volume).
 
     Returns:
-        pd.DataFrame: A DataFrame indexed by [symbol, timestamp]
-                      with columns [open, high, low, close, volume].
+        pd.DataFrame: A DataFrame with columns 
+                      [symbol, timestamp, open, high, low, close, volume].
                       Returns an empty DataFrame if the input is empty.
     """
     if not trades:
@@ -27,40 +27,34 @@ def aggregate_trades_to_ohlc(trades: list) -> pd.DataFrame:
         df = pd.DataFrame(trades)
 
         # 2. Convert raw data types
-        # 't' (timestamp) is in milliseconds, convert to full datetime objects
         df['timestamp'] = pd.to_datetime(df['t'], unit='ms', utc=True)
-        # 'p' (price) and 'v' (volume) might be strings, convert to numbers
         df['p'] = pd.to_numeric(df['p'])
         df['v'] = pd.to_numeric(df['v'])
 
-        # 3. Set the timestamp as the index, which is required for resampling
+        # 3. Set the timestamp as the index
         df = df.set_index('timestamp')
 
-        # 4. This is the core logic.
-        # We group by the symbol ('s') and then "resample" (or "bucket")
-        # all trades into 1-minute ('1T') windows.
-        
-        # Define the aggregation rules:
-        # For price ('p'): get the 'ohlc' (open, high, low, close)
-        # For volume ('v'): get the 'sum'
+        # 4. Group by symbol and resample/aggregate
         aggregations = {
-            'p': 'ohlc',
-            'v': 'sum'
+            'p': 'ohlc', # Creates open, high, low, close from 'p'
+            'v': 'sum'   # Creates sum from 'v'
         }
-
-        ohlc_df = df.groupby('s').resample('1T').agg(aggregations)
+        ohlc_df = df.groupby('s').resample('1min').agg(aggregations)
 
         # 5. Clean up the resulting DataFrame
         
-        # After the .agg(), the columns are hierarchical (e.g., ('p', 'open'), ('v', 'sum'))
-        # Let's flatten them to 'open', 'high', 'low', 'close', 'volume'
+        # Flatten the MultiIndex columns (e.g., ('p', 'open') -> 'open')
         ohlc_df.columns = ohlc_df.columns.droplevel(0)
-        ohlc_df = ohlc_df.rename(columns={'': 'volume'}) # The 'v' col becomes nameless
+
+        # --- THIS IS THE FIX ---
+        # Rename the 'v' column (which came from 'sum') to 'volume'
+        ohlc_df = ohlc_df.rename(columns={'v': 'volume'})
+        # ---------------------
 
         # Remove any 1-minute buckets that had no trades
         ohlc_df = ohlc_df.dropna()
 
-        # Reset the index so 'symbol' and 'timestamp' become regular columns
+        # Reset the index so 'symbol' ('s') and 'timestamp' become regular columns
         ohlc_df = ohlc_df.reset_index().rename(columns={'s': 'symbol'})
 
         if not ohlc_df.empty:
